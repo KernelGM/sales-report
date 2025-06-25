@@ -8,6 +8,7 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.13,<4.0"
 dependencies = [
+    "tabulate (>=0.9.0,<0.10.0)"
 ]
 
 
@@ -50,7 +51,12 @@ addopts = """
 [tool.taskipy.tasks]
 pre_format = "ruff check . --fix"
 format = "ruff format ."
-run = "python sales_report/main.py /home/kernelgm/Documentos/sales-report/data/exemple.csv"
+pre_run1 = "clear"
+run1 = "python sales_report/main.py ../data/exemple.csv --format text"
+pre_run2 = "clear"
+run2 = "python sales_report/main.py ../data/exemple.csv --format json"
+pre_run3 = "clear"
+run3 = "python sales_report/main.py ../data/exemple2.csv --start-date 2025-06-01 --end-date 2025-06-02 --format text"
 pre_test = "task format"
 test = "pytest"
 post_test = "coverage html"
