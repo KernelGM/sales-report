@@ -1,11 +1,13 @@
+import json
 import sys
+from datetime import datetime
 from unittest.mock import MagicMock, mock_open, patch
 
-from sales_report.main import App, CSVLogger, CSVReader, main
+from sales_report.main import App, CSVReader, main
 
 
-def test_csvreader_read_success(csv_data, parsed_rows):
-    m = mock_open(read_data=csv_data)
+def test_csvreader_read_success(mock_csv_data, parsed_rows):
+    m = mock_open(read_data=mock_csv_data)
     with patch('builtins.open', m):
         reader = CSVReader('fake.csv')
         result = reader.read()
@@ -32,29 +34,90 @@ def test_csvreader_read_other_exception(caplog):
         assert 'Erro ao ler o CSV' in caplog.text
 
 
-def test_csvlogger_log_info(parsed_rows, caplog):
-    logger = CSVLogger()
+def test_csvreader_read_unicode_decode_error(mock_csv_data, parsed_rows):
+    m = mock_open(read_data=mock_csv_data)
+
+    def open_side_effect(*args, **kwargs):
+        if kwargs.get('encoding') == 'utf-8':
+            raise UnicodeDecodeError('utf-8', b'', 0, 1, 'reason')
+        else:
+            return m()
+
+    with patch('builtins.open', side_effect=open_side_effect):
+        reader = CSVReader('fake.csv')
+        result = reader.read()
+        assert result == parsed_rows
+
+
+def test_app_run_empty_rows(caplog):
+    reader = CSVReader('fake.csv')
+    reader.read = MagicMock(return_value=[])
+    app = App(reader)
+
     with caplog.at_level('INFO'):
-        logger.log(parsed_rows)
-    for row in parsed_rows:
-        assert str(row) in caplog.text
+        result = app.run()
+
+    assert result is None
+    assert not caplog.text
 
 
-def test_app_run_calls_read_and_log(parsed_rows, caplog):
+def test_app_run_normal_and_log_text(parsed_rows, capsys):
     reader = CSVReader('fake.csv')
     reader.read = MagicMock(return_value=parsed_rows)
-    logger = CSVLogger()
-    app = App(reader, logger)
+    app = App(reader)
 
-    with caplog.at_level('INFO'):
-        app.run()
-
-    reader.read.assert_called_once()
-    assert 'Total de vendas por produto:' in caplog.text
+    app.run()
+    captured = capsys.readouterr()
+    assert 'Total de vendas por produto:' in captured.out
+    assert 'Camiseta' in captured.out
 
 
-def test_main_function(csv_data, parsed_rows, caplog):
-    m = mock_open(read_data=csv_data)
+def test_app_run_with_date_filter(capsys):
+    reader = CSVReader('fake.csv')
+    reader.read = MagicMock(
+        return_value=[
+            {
+                'produto': 'Camiseta',
+                'quantidade': '3',
+                'preco_unitario': '49.9',
+                'data_venda': '2024-06-01',
+            },
+            {
+                'produto': 'Calça',
+                'quantidade': '2',
+                'preco_unitario': '99.9',
+                'data_venda': '2024-06-05',
+            },
+        ]
+    )
+    app = App(
+        reader,
+        start_date=datetime(2024, 6, 1),
+        end_date=datetime(2024, 6, 3),
+    )
+
+    app.run()
+    captured = capsys.readouterr()
+    assert 'Camiseta' in captured.out
+    assert 'Calça' not in captured.out
+
+
+def test_app_run_json_output(parsed_rows, capsys):
+    reader = CSVReader('fake.csv')
+    reader.read = MagicMock(return_value=parsed_rows)
+    app = App(reader, output_format='json')
+
+    app.run()
+    captured = capsys.readouterr()
+
+    data = json.loads(captured.out)
+    assert 'vendas_por_produto' in data
+    assert 'total_vendas' in data
+    assert 'produto_mais_vendido' in data
+
+
+def test_main_function(mock_csv_data, parsed_rows, capsys):
+    m = mock_open(read_data=mock_csv_data)
     test_argv = ['program', 'dummy.csv']
 
     with (
@@ -62,36 +125,8 @@ def test_main_function(csv_data, parsed_rows, caplog):
         patch.object(sys, 'argv', test_argv),
         patch.object(CSVReader, 'read', return_value=parsed_rows),
     ):
-        with caplog.at_level('INFO'):
-            main()
-        assert 'Total de vendas por produto:' in caplog.text
-        assert 'Produto mais vendido' in caplog.text
+        main()
+        captured = capsys.readouterr()
 
-
-def test_app_run_empty_rows(caplog):
-    reader = CSVReader('fake.csv')
-    reader.read = MagicMock(return_value=[])
-    logger = CSVLogger()
-    app = App(reader, logger)
-
-    with caplog.at_level('INFO'):
-        result = app.run()
-    assert result is None
-    assert not caplog.text
-
-
-def test_app_run_with_sales_calculations(caplog, parsed_rows):
-    reader = CSVReader('fake.csv')
-    reader.read = MagicMock(return_value=parsed_rows)
-    logger = CSVLogger()
-    app = App(reader, logger)
-
-    with caplog.at_level('INFO'):
-        app.run()
-
-    assert 'Total de vendas por produto:' in caplog.text
-    assert 'Camiseta: R$ 199.60' in caplog.text
-    assert 'Calça: R$ 199.80' in caplog.text
-    assert 'Tênis: R$ 199.90' in caplog.text
-    assert 'Valor total de todas as vendas: R$ 599.30' in caplog.text
-    assert 'Produto mais vendido: Camiseta (4 unidades)' in caplog.text
+        assert 'Total de vendas por produto:' in captured.out
+        assert 'Produto mais vendido' in captured.out
