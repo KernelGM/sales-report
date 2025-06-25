@@ -40,27 +40,58 @@ def test_csvlogger_log_info(parsed_rows, caplog):
         assert str(row) in caplog.text
 
 
-def test_app_run_calls_read_and_log(parsed_rows):
+def test_app_run_calls_read_and_log(parsed_rows, caplog):
     reader = CSVReader('fake.csv')
     reader.read = MagicMock(return_value=parsed_rows)
     logger = CSVLogger()
-    logger.log = MagicMock()
     app = App(reader, logger)
-    app.run()
+
+    with caplog.at_level('INFO'):
+        app.run()
+
     reader.read.assert_called_once()
-    logger.log.assert_called_once_with(parsed_rows)
+    assert 'Total de vendas por produto:' in caplog.text
 
 
-def test_main_function(csv_data, parsed_rows):
+def test_main_function(csv_data, parsed_rows, caplog):
     m = mock_open(read_data=csv_data)
     test_argv = ['program', 'dummy.csv']
 
     with (
         patch('builtins.open', m),
         patch.object(sys, 'argv', test_argv),
-        patch.object(CSVReader, 'read', return_value=parsed_rows) as mock_read,
-        patch.object(CSVLogger, 'log') as mock_log,
+        patch.object(CSVReader, 'read', return_value=parsed_rows),
     ):
-        main()
-        mock_read.assert_called_once()
-        mock_log.assert_called_once_with(parsed_rows)
+        with caplog.at_level('INFO'):
+            main()
+        assert 'Total de vendas por produto:' in caplog.text
+        assert 'Produto mais vendido' in caplog.text
+
+
+def test_app_run_empty_rows(caplog):
+    reader = CSVReader('fake.csv')
+    reader.read = MagicMock(return_value=[])
+    logger = CSVLogger()
+    app = App(reader, logger)
+
+    with caplog.at_level('INFO'):
+        result = app.run()
+    assert result is None
+    assert not caplog.text
+
+
+def test_app_run_with_sales_calculations(caplog, parsed_rows):
+    reader = CSVReader('fake.csv')
+    reader.read = MagicMock(return_value=parsed_rows)
+    logger = CSVLogger()
+    app = App(reader, logger)
+
+    with caplog.at_level('INFO'):
+        app.run()
+
+    assert 'Total de vendas por produto:' in caplog.text
+    assert 'Camiseta: R$ 199.60' in caplog.text
+    assert 'Calça: R$ 199.80' in caplog.text
+    assert 'Tênis: R$ 199.90' in caplog.text
+    assert 'Valor total de todas as vendas: R$ 599.30' in caplog.text
+    assert 'Produto mais vendido: Camiseta (4 unidades)' in caplog.text
