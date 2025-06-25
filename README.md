@@ -42,13 +42,13 @@ poetry shell
 ### Analisar um arquivo CSV no formato texto
 
 ```bash
-python -m sales_report.main ../data/exemple.csv --format text"
+python -m sales_report.main ../data/exemple.csv --format text
 ```
 
 ### Analisar um arquivo CSV no formato JSON
 
 ```bash
-python -m sales_report.main ../data/exemple.csv --format json"
+python -m sales_report.main ../data/exemple.csv --format json
 ```
 
 ### Filtrar por intervalo de datas
