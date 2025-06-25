@@ -26,3 +26,37 @@ def parsed_rows():
             'data_venda': '2025-06-05',
         },
     ]
+
+
+@pytest.fixture
+def invalid_rows():
+    return [
+        {
+            'quantidade': '1',
+            'preco_unitario': '10.0',
+            'data_venda': '2024-01-01',
+        },  # falta 'produto'
+        {
+            'produto': 'p2',
+            'quantidade': 'NaN',
+            'preco_unitario': '10.0',
+            'data_venda': '2024-01-01',
+        },  # quantidade inválida
+    ]
+
+
+@pytest.fixture
+def rows_with_invalid_date():
+    return [
+        {
+            'produto': 'p1',
+            'quantidade': '1',
+            'preco_unitario': '10.0',
+            'data_venda': 'invalid-date',
+        },
+    ]
+
+
+@pytest.fixture
+def empty_rows():
+    return []
