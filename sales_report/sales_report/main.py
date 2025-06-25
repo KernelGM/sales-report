@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+from collections import defaultdict
 from csv import DictReader
 from logging import INFO, basicConfig, getLogger
 from typing import Dict, List
@@ -36,7 +37,37 @@ class App:
 
     def run(self) -> None:
         rows = self.reader.read()
-        self.logger.log(rows)
+        if not rows:
+            return
+
+        total_por_produto = defaultdict(float)
+        total_vendas = 0.0
+        quantidade_por_produto = defaultdict(int)
+
+        for row in rows:
+            produto = row['produto']
+            quantidade = int(row['quantidade'])
+            preco = float(row['preco_unitario'])
+            valor = quantidade * preco
+
+            total_por_produto[produto] += valor
+            total_vendas += valor
+            quantidade_por_produto[produto] += quantidade
+
+        produto_mais_vendido = max(
+            quantidade_por_produto,
+            key=lambda produto: quantidade_por_produto[produto],
+        )
+
+        logger.info('Total de vendas por produto:')
+        for produto, total in total_por_produto.items():
+            logger.info(f'{produto}: R$ {total:.2f}')
+
+        logger.info(f'Valor total de todas as vendas: R$ {total_vendas:.2f}')
+        logger.info(
+            f'Produto mais vendido: {produto_mais_vendido} '
+            f'({quantidade_por_produto[produto_mais_vendido]} unidades)'
+        )
 
 
 def main():
@@ -54,5 +85,5 @@ def main():
     app.run()
 
 
-if __name__ == '__main__':  # pragma: no cover
+if __name__ == '__main__':
     main()
