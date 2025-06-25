@@ -4,7 +4,7 @@ from csv import DictReader
 from datetime import datetime
 from json import dumps
 from logging import INFO, basicConfig, getLogger
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from tabulate import tabulate
 
@@ -19,10 +19,15 @@ class CSVReader:
     def read(self) -> List[Dict[str, str]]:
         try:
             with open(self.file_path, newline='', encoding='utf-8') as f:
+                logger.info(f'Lendo arquivo CSV: {self.file_path}')
                 return list(DictReader(f))
         except UnicodeDecodeError:
-            with open(self.file_path, newline='', encoding='cp1252') as f:
-                return list(DictReader(f))
+            try:
+                with open(self.file_path, newline='', encoding='cp1252') as f:
+                    logger.info(f'Read com fallback cp1252: {self.file_path}')
+                    return list(DictReader(f))
+            except Exception as e:
+                logger.error(f'Erro ao ler CSV com fallback cp1252: {e}')
         except FileNotFoundError:
             logger.error(f'Arquivo não encontrado: {self.file_path}')
         except Exception as e:
@@ -44,28 +49,38 @@ class App:
         self.output_format: str = output_format
 
     @staticmethod
-    def _parse_date(date_str: str) -> datetime:
-        return datetime.strptime(date_str, '%Y-%m-%d')
+    def _parse_date(date_str: str) -> Optional[datetime]:
+        try:
+            return datetime.strptime(date_str, '%Y-%m-%d')
+        except ValueError as e:
+            logger.error(
+                f'Data inválida: "{date_str}". Esperado YYYY-MM-DD. Erro: {e}'
+            )
+            return None
 
     def _filter_by_date(
         self, rows: List[Dict[str, str]]
     ) -> List[Dict[str, str]]:
-        return [
-            row
-            for row in rows
-            if (
-                not self.start_date
-                or self._parse_date(row['data_venda']) >= self.start_date
-            )
-            and (
-                not self.end_date
-                or self._parse_date(row['data_venda']) <= self.end_date
-            )
-        ]
+        filtered_rows: List[Dict[str, str]] = []
+        for row in rows:
+            data_venda_str = row.get('data_venda', '')
+            data_venda = self._parse_date(data_venda_str)
+            if data_venda is None:
+                logger.warning(
+                    f'Data ignorada por formato inválido: {data_venda_str}'
+                )
+                continue
+            if (self.start_date and data_venda < self.start_date) or (
+                self.end_date and data_venda > self.end_date
+            ):
+                continue
+            filtered_rows.append(row)
+        return filtered_rows
 
     def run(self) -> None:
         rows: List[Dict[str, str]] = self.reader.read()
         if not rows:
+            logger.error('Nenhum dado disponível para processar.')
             return
 
         if self.start_date or self.end_date:
@@ -75,24 +90,34 @@ class App:
         quantity_by_product: Dict[str, int] = defaultdict(int)
         total_sales: float = 0.0
 
-        for row in rows:
-            product: str = row['produto']
-            quantity: int = int(row['quantidade'])
-            price: float = float(row['preco_unitario'])
-            value: float = quantity * price
+        for idx, row in enumerate(rows, start=1):
+            try:
+                product: str = row['produto']
+                quantity: int = int(row['quantidade'])
+                price: float = float(row['preco_unitario'])
+            except KeyError as e:
+                logger.error(f'Coluna faltando na linha {idx}: {e}')
+                continue
+            except ValueError as e:
+                logger.error(f'Erro na conversão de dados na linha {idx}: {e}')
+                continue
 
+            value: float = quantity * price
             sales_by_product[product] += value
             quantity_by_product[product] += quantity
             total_sales += value
 
-        quantity_by_product_dict: Dict[str, int] = dict(quantity_by_product)
+        if not quantity_by_product:
+            logger.error('Nenhuma venda válida encontrada após processamento.')
+            return
+
         top_product: str = max(
-            quantity_by_product_dict.items(),
+            quantity_by_product.items(),
             key=lambda x: x[1],
             default=('', 0),
         )[0]
 
-        data: Dict[str, object] = {
+        data: Dict[str, Any] = {
             'vendas_por_produto': dict(sales_by_product),
             'total_vendas': total_sales,
             'produto_mais_vendido': {
@@ -103,7 +128,7 @@ class App:
 
         self._print(data)
 
-    def _print(self, data: dict) -> None:
+    def _print(self, data: Dict[str, Any]) -> None:
         if self.output_format == 'json':
             print(dumps(data, indent=2, ensure_ascii=False))
         else:
@@ -125,7 +150,15 @@ class App:
 
     @staticmethod
     def parse_date(date_str: Optional[str]) -> Optional[datetime]:
-        return datetime.strptime(date_str, '%Y-%m-%d') if date_str else None
+        if not date_str:
+            return None
+        try:
+            return datetime.strptime(date_str, '%Y-%m-%d')
+        except ValueError as e:
+            logger.error(
+                f'Data inválida no argumento: "{date_str}". Erro: {e}'
+            )
+            return None
 
 
 def main() -> None:
