@@ -24,7 +24,7 @@ Um sistema modular e extensível para análise de dados de vendas a partir de ar
 ```bash
 # Clone o repositório
 git clone https://github.com/KernelGM/sales-report.git
-cd sales_report
+cd sales-report/sales_report/
 ```
 
 # Instale as dependências
