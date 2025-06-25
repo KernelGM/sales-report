@@ -1,0 +1,56 @@
+[project]
+name = "sales-report"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Gustavo Martins",email = "kernelgm@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.13,<4.0"
+dependencies = [
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.1"
+pytest-cov = "^6.2.1"
+ruff = "^0.12.0"
+taskipy = "^1.14.1"
+
+[tool.ruff]
+line-length = 79
+
+[tool.ruff.lint]
+preview = true
+select = ["I", "F", "E", "W", "PL", "PT"]
+
+[tool.ruff.format]
+preview = true
+quote-style = "single"
+
+[tool.pytest.ini_options]
+pythonpath = "."
+addopts = """
+  --strict-markers
+  --tb=short
+  --cov=sales_report
+  --cov-report=term-missing
+  --cov-report=html
+  --cov-fail-under=80
+  -p no:warnings
+  -s
+  -x
+  -vv
+"""
+
+[tool.taskipy.tasks]
+pre_format = "ruff check . --fix"
+format = "ruff format ."
+run = "python sales_report/main.py /home/kernelgm/Documentos/sales-report/data/exemple.csv"
+pre_test = "task format"
+test = "pytest"
+post_test = "coverage html"
