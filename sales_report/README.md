@@ -24,7 +24,7 @@ Um sistema modular e extensível para análise de dados de vendas a partir de ar
 ```bash
 # Clone o repositório
 git clone https://github.com/KernelGM/sales-report.git
-cd sales_report
+cd sales-report/sales_report/
 ```
 
 # Instale as dependências
@@ -42,13 +42,13 @@ poetry shell
 ### Analisar um arquivo CSV no formato texto
 
 ```bash
-python -m sales_report.main ../data/exemple.csv --format text"
+python -m sales_report.main ../data/exemple.csv --format text
 ```
 
 ### Analisar um arquivo CSV no formato JSON
 
 ```bash
-python -m sales_report.main ../data/exemple.csv --format json"
+python -m sales_report.main ../data/exemple.csv --format json
 ```
 
 ### Filtrar por intervalo de datas
