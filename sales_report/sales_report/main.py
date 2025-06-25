@@ -1,19 +1,26 @@
 from argparse import ArgumentParser
 from collections import defaultdict
 from csv import DictReader
+from datetime import datetime
+from json import dumps
 from logging import INFO, basicConfig, getLogger
-from typing import Dict, List
+from typing import Dict, List, Optional
+
+from tabulate import tabulate
 
 basicConfig(level=INFO, format='%(levelname)s: %(message)s')
 logger = getLogger(__name__)
 
 
 class CSVReader:
-    def __init__(self, file_path: str):
-        self.file_path = file_path
+    def __init__(self, file_path: str) -> None:
+        self.file_path: str = file_path
 
     def read(self) -> List[Dict[str, str]]:
         try:
+            with open(self.file_path, newline='', encoding='utf-8') as f:
+                return list(DictReader(f))
+        except UnicodeDecodeError:
             with open(self.file_path, newline='', encoding='cp1252') as f:
                 return list(DictReader(f))
         except FileNotFoundError:
@@ -23,65 +30,127 @@ class CSVReader:
         return []
 
 
-class CSVLogger:
-    @staticmethod
-    def log(rows: List[Dict[str, str]]) -> None:
-        for row in rows:
-            logger.info(row)
-
-
 class App:
-    def __init__(self, reader: CSVReader, logger_: CSVLogger):
-        self.reader = reader
-        self.logger = logger_
+    def __init__(
+        self,
+        reader: CSVReader,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        output_format: str = 'text',
+    ) -> None:
+        self.reader: CSVReader = reader
+        self.start_date: Optional[datetime] = start_date
+        self.end_date: Optional[datetime] = end_date
+        self.output_format: str = output_format
+
+    @staticmethod
+    def _parse_date(date_str: str) -> datetime:
+        return datetime.strptime(date_str, '%Y-%m-%d')
+
+    def _filter_by_date(
+        self, rows: List[Dict[str, str]]
+    ) -> List[Dict[str, str]]:
+        return [
+            row
+            for row in rows
+            if (
+                not self.start_date
+                or self._parse_date(row['data_venda']) >= self.start_date
+            )
+            and (
+                not self.end_date
+                or self._parse_date(row['data_venda']) <= self.end_date
+            )
+        ]
 
     def run(self) -> None:
-        rows = self.reader.read()
+        rows: List[Dict[str, str]] = self.reader.read()
         if not rows:
             return
 
-        total_por_produto = defaultdict(float)
-        total_vendas = 0.0
-        quantidade_por_produto = defaultdict(int)
+        if self.start_date or self.end_date:
+            rows = self._filter_by_date(rows)
+
+        sales_by_product: Dict[str, float] = defaultdict(float)
+        quantity_by_product: Dict[str, int] = defaultdict(int)
+        total_sales: float = 0.0
 
         for row in rows:
-            produto = row['produto']
-            quantidade = int(row['quantidade'])
-            preco = float(row['preco_unitario'])
-            valor = quantidade * preco
+            product: str = row['produto']
+            quantity: int = int(row['quantidade'])
+            price: float = float(row['preco_unitario'])
+            value: float = quantity * price
 
-            total_por_produto[produto] += valor
-            total_vendas += valor
-            quantidade_por_produto[produto] += quantidade
+            sales_by_product[product] += value
+            quantity_by_product[product] += quantity
+            total_sales += value
 
-        produto_mais_vendido = max(
-            quantidade_por_produto,
-            key=lambda produto: quantidade_por_produto[produto],
-        )
+        quantity_by_product_dict: Dict[str, int] = dict(quantity_by_product)
+        top_product: str = max(
+            quantity_by_product_dict.items(),
+            key=lambda x: x[1],
+            default=('', 0),
+        )[0]
 
-        logger.info('Total de vendas por produto:')
-        for produto, total in total_por_produto.items():
-            logger.info(f'{produto}: R$ {total:.2f}')
+        data: Dict[str, object] = {
+            'vendas_por_produto': dict(sales_by_product),
+            'total_vendas': total_sales,
+            'produto_mais_vendido': {
+                'nome': top_product,
+                'quantidade': quantity_by_product.get(top_product, 0),
+            },
+        }
 
-        logger.info(f'Valor total de todas as vendas: R$ {total_vendas:.2f}')
-        logger.info(
-            f'Produto mais vendido: {produto_mais_vendido} '
-            f'({quantidade_por_produto[produto_mais_vendido]} unidades)'
-        )
+        self._print(data)
+
+    def _print(self, data: dict) -> None:
+        if self.output_format == 'json':
+            print(dumps(data, indent=2, ensure_ascii=False))
+        else:
+            print('Total de vendas por produto:')
+            print(
+                tabulate(
+                    data['vendas_por_produto'].items(),
+                    headers=['Produto', 'Total (R$)'],
+                )
+            )
+            print(
+                f'\nValor total de todas as vendas: '
+                f'R$ {data["total_vendas"]:.2f}'
+            )
+            print(
+                f'Produto mais vendido: {data["produto_mais_vendido"]["nome"]}'
+                f'({data["produto_mais_vendido"]["quantidade"]} unidades)'
+            )
+
+    @staticmethod
+    def parse_date(date_str: Optional[str]) -> Optional[datetime]:
+        return datetime.strptime(date_str, '%Y-%m-%d') if date_str else None
 
 
-def main():
-    parser = ArgumentParser(
-        description='Lê um arquivo CSV e exibe informações de vendas'
-    )
+def main() -> None:
+    parser = ArgumentParser(description='Relatório de vendas a partir de CSV')
+    parser.add_argument('csv_file', help='Caminho do CSV')
+    parser.add_argument('--start-date', help='Data inicial (YYYY-MM-DD)')
+    parser.add_argument('--end-date', help='Data final (YYYY-MM-DD)')
     parser.add_argument(
-        'csv_file', help='Caminho para o arquivo CSV a ser lido'
+        '--format',
+        choices=['text', 'json'],
+        default='text',
+        help='Formato de saída',
     )
     args = parser.parse_args()
 
+    start_date: Optional[datetime] = App.parse_date(args.start_date)
+    end_date: Optional[datetime] = App.parse_date(args.end_date)
+
     reader = CSVReader(args.csv_file)
-    logger_ = CSVLogger()
-    app = App(reader, logger_)
+    app = App(
+        reader,
+        start_date=start_date,
+        end_date=end_date,
+        output_format=args.format,
+    )
     app.run()
 
 
